@@ -45,6 +45,7 @@ extern void ADC0IntHandler(void);
 extern void uDMAErrorHandler(void);
 extern void SSI0IntHandler(void);
 extern void I2C0SlaveIntHandler(void);
+extern void UART0IntHandler(void);
 //*****************************************************************************
 //
 // Linker variable that marks the top of the stack.
@@ -91,7 +92,7 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // GPIO Port C
     IntDefaultHandler,                      // GPIO Port D
     IntDefaultHandler,                      // GPIO Port E
-    IntDefaultHandler,                      // UART0 Rx and Tx
+	IntDefaultHandler,                      // UART0 Rx and Tx
     IntDefaultHandler,                      // UART1 Rx and Tx
 	SSI0IntHandler,                      // SSI0 Rx and Tx
 	I2C0SlaveIntHandler,                      // I2C0 Master and Slave
@@ -132,7 +133,7 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // Hibernate
     IntDefaultHandler,                      // USB0
     IntDefaultHandler,                      // PWM Generator 3
-    IntDefaultHandler,                      // uDMA Software Transfer
+	IntDefaultHandler,                      // uDMA Software Transfer
 	uDMAErrorHandler,                      // uDMA Error
 	IntDefaultHandler,                      // ADC1 Sequence 0
     IntDefaultHandler,                      // ADC1 Sequence 1

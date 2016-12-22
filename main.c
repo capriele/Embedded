@@ -39,13 +39,13 @@ uint32_t currentFile;
 
 //----------------------------------------------------------------
 // DEFINITIONS
-extern const uint8_t g_pui8Image[];
 #define TARGET_IS_BLIZZARD_RB1
 #define ADC_SAMPLE_BUF_SIZE (128)
+#define TXBUF_SIZE         1
+#define I2C0_SLAVE_ADDRESS 0xBB
+static uint16_t TxBuf[TXBUF_SIZE];
 uint32_t udmaCtrlTable[1024 / sizeof(uint32_t)]__attribute__((aligned(1024)));
 uint16_t ADC_OUT[8];
-uint32_t n = 0;
-static uint32_t g_ui32DMAErrCount = 0;
 
 //*****************************************************************************
 //
@@ -90,48 +90,48 @@ void InitConsole(void) {
 	UARTStdioConfig(0, 115200, 16000000);
 }
 
-//----------------------------------------------------------------
-// INTERRUPT HANDLERS
+//*****************************************************************************
+//
+// Initializes the uDMA software channel to perform a memory to memory uDMA
+// transfer.
+//
+//*****************************************************************************
+void SSI0IntHandler(void){
+    uint32_t ui32Status;
+
+    // Read the interrupt status of the SPI.
+    ui32Status = ROM_SSIIntStatus(SSI0_BASE, 1);//eval board
+
+    // Clear any pending status, even though there should be none since no SPI
+    // interrupts were enabled.  If SPI error interrupts were enabled, then
+    // those interrupts could occur here and should be handled.  Since uDMA is
+    // used for both the RX and TX, then neither of those interrupts should be
+    // enabled. solo DMA-Int è enabled
+    SSIIntClear(SSI0_BASE, ui32Status);
+}
+
 void uDMAErrorHandler(void) {
-	uint32_t ui32Status;
-	ui32Status = ROM_uDMAErrorStatusGet();
-	if (ui32Status) {
-		ROM_uDMAErrorStatusClear();
-		g_ui32DMAErrCount++;
-	}
+    unsigned long ulStatus;
+
+    // Check for uDMA error bit
+    ulStatus = ROM_uDMAErrorStatusGet();
+
+    // If there is a uDMA error, then clear the error and continue.  If we're
+    // still debugging our project, we want to infinte loop here so we can
+    // investiage the failure cause.
+    if(ulStatus) uDMAErrorStatusClear();
 }
 void ADCprocess(uint32_t ch) {
-	if ((((tDMAControlTable *) udmaCtrlTable)[ch].ui32Control
-			& UDMA_CHCTL_XFERMODE_M) != UDMA_MODE_STOP)
+	if ((((tDMAControlTable *) udmaCtrlTable)[ch].ui32Control & UDMA_CHCTL_XFERMODE_M) != UDMA_MODE_STOP)
 		return;
-	uDMAChannelTransferSet(ch, UDMA_MODE_PINGPONG,
-			(void *) (ADC0_BASE + ADC_O_SSFIFO0), &ADC_OUT,
-			ADC_SAMPLE_BUF_SIZE);
+	uDMAChannelTransferSet(ch, UDMA_MODE_PINGPONG, (void *) (ADC0_BASE + ADC_O_SSFIFO0), &ADC_OUT, ADC_SAMPLE_BUF_SIZE);
 	uDMAChannelEnable(UDMA_CHANNEL_ADC0);
 }
 void ADC0IntHandler(void) {
 	ADCIntClear(ADC0_BASE, 0);
-	n++;
 	ADCprocess(UDMA_CHANNEL_ADC0 | UDMA_PRI_SELECT);
 	ADCprocess(UDMA_CHANNEL_ADC0 | UDMA_ALT_SELECT);
-}
-void SSI0IntHandler(void) {
-	uint32_t ui32Status;
-	uint32_t ui32Mode;
-
-	ui32Status = ROM_SSIIntStatus(SSI0_BASE, 1);
-
-	ROM_SSIIntClear(SSI0_BASE, ui32Status);
-
-	ui32Mode = ROM_uDMAChannelModeGet(UDMA_CHANNEL_SSI0RX | UDMA_PRI_SELECT);
-
-	if (!ROM_uDMAChannelIsEnabled(UDMA_CHANNEL_SSI0TX)) {
-		ROM_uDMAChannelTransferSet(UDMA_CHANNEL_SSI0TX | UDMA_PRI_SELECT,
-		UDMA_MODE_BASIC, ADC_OUT[0], (void *) (SSI0_BASE + SSI_O_DR),
-				sizeof(ADC_OUT[0]));
-
-		ROM_uDMAChannelEnable(UDMA_CHANNEL_SSI0TX);
-	}
+	TxBuf[0] = ADC_OUT[0];
 }
 void SW1_IntHandler(void) {
 	if (GPIOIntStatus(GPIO_PORTF_BASE, false) & GPIO_PIN_4) {
@@ -152,8 +152,6 @@ void SW1_IntHandler(void) {
 	}
 	GPIOIntClear(GPIO_PORTF_BASE, GPIO_INT_PIN_4);
 }
-
-//----------------------------------------------------------------
 
 //----------------------------------------------------------------
 // ADC INITIALIZATION
@@ -204,8 +202,7 @@ void InitADC() {
 
 	ADCSequenceEnable(ADC0_BASE, 0); //Once configuration is set, re-enable the sequencer
 	ADCIntClear(ADC0_BASE, 0);
-	uDMAEnable(); // Enables uDMA
-	uDMAControlBaseSet(udmaCtrlTable);
+
 	// Configures the base address of the channel control table. Table resides in system memory and holds control
 	//     information for each uDMA channel. Table must be aligned on a 1024-byte boundary. Base address must be
 	//     configured before any of the channel functions can be used
@@ -261,85 +258,45 @@ void InitSW1(void) {
 	GPIOIntEnable(GPIO_PORTF_BASE, GPIO_PIN_4);     // Enable interrupt for PF4
 }
 void InitSPI(void) {
-	/* Abilita l'SPI a 8Mhz, 8bit
+	/* Abilita l'SPI a 1Mhz, 16bit
 	 * Sui PIN:
 	 * 			PA2 => SCK
 	 * 			PA3 => CS/SS
-	 * 			PA4 => RX (MiSo)
+	 * 			PA4 => RX (MiSo) (Non utilizzato)
 	 * 			PA5 => Tx (MoSi)
 	 */
+
 	// SSI0 enable
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI0);
-	ROM_SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_SSI0);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI0);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_SSI0);
 
 	// GPIOA pins for SSI0 enable
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 
-	// Mapping
-	ROM_GPIOPinConfigure(GPIO_PA2_SSI0CLK);
-	ROM_GPIOPinConfigure(GPIO_PA3_SSI0FSS);
-	ROM_GPIOPinConfigure(GPIO_PA4_SSI0RX);
-	ROM_GPIOPinConfigure(GPIO_PA5_SSI0TX);
-
-	// SPI pins config
-	ROM_GPIOPinTypeSSI(GPIO_PORTA_BASE,
-			GPIO_PIN_5 | GPIO_PIN_4 | GPIO_PIN_3 | GPIO_PIN_2);
+	GPIOPinConfigure(GPIO_PA2_SSI0CLK);
+	GPIOPinConfigure(GPIO_PA3_SSI0FSS);
+	GPIOPinConfigure(GPIO_PA5_SSI0TX);
+	GPIOPinTypeSSI(GPIO_PORTA_BASE,GPIO_PIN_5 | GPIO_PIN_3 | GPIO_PIN_2);
 
 	// SSI0 config
-	SSIConfigSetExpClk(SSI0_BASE, SysCtlClockGet(), SSI_FRF_MOTO_MODE_0,
-			SSI_MODE_SLAVE, 8000000, 8);
+	SSIConfigSetExpClk(SSI0_BASE, SysCtlClockGet(), SSI_FRF_MOTO_MODE_3, SSI_MODE_MASTER, 1000000, 16);
 
 	// SSI0 enable
 	SSIEnable(SSI0_BASE);
 
 	SSIDMAEnable(SSI0_BASE, SSI_DMA_TX);
-	//****************************************************************************
-	//uDMA SSI0 TX
-	//****************************************************************************
 
-	// Put the attributes in a known state for the uDMA SSI0TX channel.  These
-	// should already be disabled by default.
-	ROM_uDMAChannelAttributeDisable(UDMA_CHANNEL_SSI0TX,UDMA_ATTR_ALTSELECT | UDMA_ATTR_HIGH_PRIORITY | UDMA_ATTR_REQMASK);
+	uDMAChannelAttributeDisable(UDMA_CHANNEL_SSI0TX, UDMA_ATTR_ALTSELECT | UDMA_ATTR_HIGH_PRIORITY | UDMA_ATTR_REQMASK);
+	uDMAChannelAttributeEnable(UDMA_CHANNEL_SSI0TX, UDMA_ATTR_USEBURST);
+	uDMAChannelControlSet(UDMA_CHANNEL_SSI0TX | UDMA_PRI_SELECT, UDMA_SIZE_16 | UDMA_SRC_INC_16 | UDMA_DST_INC_NONE | UDMA_ARB_4);
+	uDMAChannelTransferSet(UDMA_CHANNEL_SSI0TX | UDMA_PRI_SELECT, UDMA_MODE_BASIC, TxBuf, (void *)(SSI0_BASE + SSI_O_DR), sizeof(TxBuf));
+	uDMAChannelAssign(UDMA_CH11_SSI0TX);
+	uDMAChannelEnable(UDMA_CHANNEL_SSI0TX);
 
-	// Set the USEBURST attribute for the uDMA SSI0TX channel.  This will
-	// force the controller to always use a burst when transferring data from
-	// the TX buffer to the SSI0.  This is somewhat more effecient bus usage
-	// than the default which allows single or burst transfers.
-	ROM_uDMAChannelAttributeEnable(UDMA_CHANNEL_SSI0TX, UDMA_ATTR_USEBURST);
-
-	// Configure the control parameters for the SSI0 TX.
-	ROM_uDMAChannelControlSet(UDMA_CHANNEL_SSI0TX | UDMA_PRI_SELECT,
-	UDMA_SIZE_8 | UDMA_SRC_INC_8 | UDMA_DST_INC_NONE |
-	UDMA_ARB_4);
-
-	// Set up the transfer parameters for the uDMA SSI0 TX channel.  This will
-	// configure the transfer source and destination and the transfer size.
-	// Basic mode is used because the peripheral is making the uDMA transfer
-	// request.  The source is the TX buffer and the destination is theUART0
-	// data register.
-	ROM_uDMAChannelTransferSet(UDMA_CHANNEL_SSI0TX | UDMA_PRI_SELECT,
-	UDMA_MODE_BASIC, ADC_OUT[0], (void *) (SSI0_BASE + SSI_O_DR),
-			sizeof(ADC_OUT[0]));
-
-	//
-	// Now both the uDMA SSI0 TX and RX channels are primed to start a
-	// transfer.  As soon as the channels are enabled, the peripheral will
-	// issue a transfer request and the data transfers will begin.
-	//
-	ROM_uDMAChannelEnable(UDMA_CHANNEL_SSI0TX);
-
-	//
-	// Enable the SSI0 DMA TX/RX interrupts.
-	//
-	ROM_SSIIntEnable(SSI0_BASE, SSI_DMATX);
-
-	//
-	// Enable the SSI0 peripheral interrupts.
-	//
-	ROM_IntEnable(INT_SSI0);
+	// Enable the SPI peripheral interrupts.
+	SSIIntEnable(SSI0_BASE, SSI_DMATX);
+	IntEnable(INT_SSI0);
 }
-
-#define I2C0_SLAVE_ADDRESS 0xBB
 void InitI2C0(void)
 {
     //enable I2C module 0
@@ -359,46 +316,57 @@ void InitI2C0(void)
     GPIOPinTypeI2CSCL(GPIO_PORTB_BASE, GPIO_PIN_2);
     GPIOPinTypeI2C(GPIO_PORTB_BASE, GPIO_PIN_3);
 
-    I2CSlaveIntClear(I2C0_BASE);
-    I2CSlaveIntClearEx(I2C0_BASE,I2C_SLAVE_INT_DATA);
-
+    IntEnable(INT_I2C0);
+    I2CSlaveIntEnableEx(I2C0_BASE, I2C_SLAVE_INT_DATA);
+    //I2CSlaveIntEnable(I2C0_BASE);
     I2CSlaveEnable(I2C0_BASE);
     I2CSlaveInit(I2C0_BASE, I2C0_SLAVE_ADDRESS);
-
-    IntEnable(INT_I2C0);
-    I2CSlaveIntEnableEx(I2C0_BASE, I2C_SLAVE_INT_START | I2C_SLAVE_INT_DATA | I2C_SLAVE_INT_RX_DMA_DONE | I2C_SLAVE_INT_TX_DMA_DONE);
 }
 void I2C0SlaveIntHandler(void)
 {
-    I2CSlaveIntClear(I2C0_BASE);
-    I2CSlaveIntClearEx(I2C0_BASE,I2C_SLAVE_INT_DATA);
-    uint32_t sel = I2CSlaveDataGet(I2C0_BASE);
-    switch(sel) {
-    case 119:
-    		I2CSlaveDataPut(I2C0_BASE, (uint8_t)((ADC_OUT[0] >> 8) & 0xFF));
-        break;
-    case 1:
-	    I2CSlaveDataPut(I2C0_BASE, (uint8_t)((ADC_OUT[0] >> 0) & 0xFF));
-        break;
-    default:
-	    I2CSlaveDataPut(I2C0_BASE, (uint8_t)((ADC_OUT[0] >> 0) & 0xFF));
-        break;
-    }
+    //I2CSlaveIntClear(I2C0_BASE);
+	static uint8_t i2cCall = 0;
+    // Clear the I2C0 interrupt flag.
+    uint32_t status = I2CSlaveStatus(I2C0_BASE);
+    //switch(status){
+	//case I2C_SLAVE_ACT_RREQ:
+	//case I2C_SLAVE_ACT_TREQ:
+		if(i2cCall == 0){
+			I2CSlaveDataPut(I2C0_BASE, (uint8_t)((ADC_OUT[0] >> 8) & 0xFF));
+			i2cCall = 1;
+		} else {
+			I2CSlaveDataPut(I2C0_BASE, (uint8_t)((ADC_OUT[0] >> 0) & 0xFF));
+			i2cCall = 0;
+		}
+	//	break;
+    //}
+}
+
+
+void data_transfer(){
+	//SPI
+    uDMAChannelTransferSet(UDMA_CHANNEL_SSI0TX | UDMA_PRI_SELECT,
+    						  UDMA_MODE_BASIC, TxBuf,
+					      (void *) (SSI0_BASE + SSI_O_DR),
+						  sizeof(TxBuf));
+    uDMAChannelEnable(UDMA_CHANNEL_SSI0TX);
 }
 
 
 int main(void) {
 
-	ROM_SysCtlClockSet(
-			SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN
-					| SYSCTL_XTAL_16MHZ);
+	ROM_SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
 	SysCtlDelay(20);
+
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_UDMA);
+	SysCtlPeripheralSleepEnable(SYSCTL_PERIPH_UDMA);
+	IntEnable(INT_UDMAERR);
+	uDMAEnable(); // Enables uDMA
+	uDMAControlBaseSet(udmaCtrlTable);
+	SysCtlDelay(10);
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0); //Enable the clock to ADC module
 	SysCtlDelay(10); // Time for the peripheral enable to set
-
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_UDMA);
-	SysCtlDelay(10);
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
@@ -406,7 +374,7 @@ int main(void) {
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 	GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
-	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0x0f);
+	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0x01);
 	SysCtlDelay(30);
 
 	InitConsole();
@@ -438,6 +406,12 @@ int main(void) {
 	IntMasterEnable();
 
 	while (1) {
-		UARTprintf("Temperature = %d -- %d\r", ADC_OUT[0], ADC_OUT[1]);
+
+		//SPI
+		data_transfer();
+		//SSIDataPutNonBlocking(SSI0_BASE, ADC_OUT[0]);
+
+		//UART
+		UARTprintf("%d\r\n", ADC_OUT[0]);
 	}
 }

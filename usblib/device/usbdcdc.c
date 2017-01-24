@@ -2,7 +2,7 @@
 //
 // usbdcdc.c - USB CDC ACM (serial) device class driver.
 //
-// Copyright (c) 2008-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2008-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -146,13 +146,13 @@
 // for each endpoint.
 //
 //*****************************************************************************
-#define DATA_IN_EP_FIFO_SIZE    USB_FIFO_SZ_64
-#define DATA_OUT_EP_FIFO_SIZE   USB_FIFO_SZ_64
-#define CTL_IN_EP_FIFO_SIZE     USB_FIFO_SZ_16
+#define DATA_IN_EP_MAX_SIZE     USBFIFOSizeToBytes(USB_FIFO_SZ_64)
+#define DATA_OUT_EP_MAX_SIZE    USBFIFOSizeToBytes(USB_FIFO_SZ_64)
 
-#define DATA_IN_EP_MAX_SIZE     USBFIFOSizeToBytes(DATA_IN_EP_FIFO_SIZE)
-#define DATA_OUT_EP_MAX_SIZE    USBFIFOSizeToBytes(DATA_IN_EP_FIFO_SIZE)
-#define CTL_IN_EP_MAX_SIZE      USBFIFOSizeToBytes(CTL_IN_EP_FIFO_SIZE)
+#define DATA_IN_EP_MAX_SIZE_HS  USBFIFOSizeToBytes(USB_FIFO_SZ_512)
+#define DATA_OUT_EP_MAX_SIZE_HS USBFIFOSizeToBytes(USB_FIFO_SZ_512)
+
+#define CTL_IN_EP_MAX_SIZE      USBFIFOSizeToBytes(USB_FIFO_SZ_16)
 
 //*****************************************************************************
 //
@@ -390,6 +390,58 @@ const tConfigSection g_sCDCSerDataInterfaceSection =
 
 //*****************************************************************************
 //
+// This is the Data interface for the serial device.
+//
+//*****************************************************************************
+const uint8_t g_pui8CDCSerDataInterfaceHS[SERDATAINTERFACE_SIZE] =
+{
+    //
+    // Communication Class Data Interface Descriptor.
+    //
+    9,                              // Size of the interface descriptor.
+    USB_DTYPE_INTERFACE,            // Type of this descriptor.
+    SERIAL_INTERFACE_DATA,          // The index for this interface.
+    0,                              // The alternate setting for this
+                                    // interface.
+    2,                              // The number of endpoints used by this
+                                    // interface.
+    USB_CLASS_CDC_DATA,             // The interface class constant defined by
+                                    // USB-IF (spec 5.1.3).
+    0,                              // The interface sub-class constant
+                                    // defined by USB-IF (spec 5.1.3).
+    USB_CDC_PROTOCOL_NONE,          // The interface protocol for the sub-class
+                                    // specified above.
+    0,                              // The string index for this interface.
+
+    //
+    // Endpoint Descriptor
+    //
+    7,                              // The size of the endpoint descriptor.
+    USB_DTYPE_ENDPOINT,             // Descriptor type is an endpoint.
+    USB_EP_DESC_IN | USBEPToIndex(DATA_IN_ENDPOINT),
+    USB_EP_ATTR_BULK,               // Endpoint is a bulk endpoint.
+    USBShort(DATA_IN_EP_MAX_SIZE_HS),  // The maximum packet size.
+    0,                              // The polling interval for this endpoint.
+
+    //
+    // Endpoint Descriptor
+    //
+    7,                              // The size of the endpoint descriptor.
+    USB_DTYPE_ENDPOINT,             // Descriptor type is an endpoint.
+    USB_EP_DESC_OUT | USBEPToIndex(DATA_OUT_ENDPOINT),
+    USB_EP_ATTR_BULK,               // Endpoint is a bulk endpoint.
+    USBShort(DATA_OUT_EP_MAX_SIZE_HS), // The maximum packet size.
+    0,                              // The polling interval for this endpoint.
+};
+
+const tConfigSection g_sCDCSerDataInterfaceSectionHS =
+{
+    sizeof(g_pui8CDCSerDataInterfaceHS),
+    g_pui8CDCSerDataInterfaceHS
+};
+
+//*****************************************************************************
+//
 // This array lists all the sections that must be concatenated to make a
 // single, complete CDC ACM configuration descriptor.
 //
@@ -399,6 +451,13 @@ const tConfigSection *g_psCDCSerSections[] =
     &g_sCDCSerConfigSection,
     &g_sCDCSerCommInterfaceSection,
     &g_sCDCSerDataInterfaceSection,
+};
+
+const tConfigSection *g_psCDCSerSectionsHS[] =
+{
+    &g_sCDCSerConfigSection,
+    &g_sCDCSerCommInterfaceSection,
+    &g_sCDCSerDataInterfaceSectionHS,
 };
 
 #define NUM_CDCSER_SECTIONS     (sizeof(g_psCDCSerSections) /                 \
@@ -417,6 +476,12 @@ const tConfigHeader g_sCDCSerConfigHeader =
     g_psCDCSerSections
 };
 
+const tConfigHeader g_sCDCSerConfigHeaderHS =
+{
+    NUM_CDCSER_SECTIONS,
+    g_psCDCSerSectionsHS
+};
+
 //*****************************************************************************
 //
 // This array lists all the sections that must be concatenated to make a
@@ -430,6 +495,14 @@ const tConfigSection *g_psCDCCompSerSections[] =
     &g_sIADSerConfigSection,
     &g_sCDCSerCommInterfaceSection,
     &g_sCDCSerDataInterfaceSection,
+};
+
+const tConfigSection *g_psCDCCompSerSectionsHS[] =
+{
+    &g_sCDCSerConfigSection,
+    &g_sIADSerConfigSection,
+    &g_sCDCSerCommInterfaceSection,
+    &g_sCDCSerDataInterfaceSectionHS,
 };
 
 #define NUM_COMP_CDCSER_SECTIONS (sizeof(g_psCDCCompSerSections) /            \
@@ -448,6 +521,12 @@ const tConfigHeader g_sCDCCompSerConfigHeader =
     g_psCDCCompSerSections
 };
 
+const tConfigHeader g_sCDCCompSerConfigHeaderHS =
+{
+    NUM_COMP_CDCSER_SECTIONS,
+    g_psCDCCompSerSectionsHS
+};
+
 //*****************************************************************************
 //
 // Configuration Descriptor for the CDC serial class device.
@@ -456,6 +535,11 @@ const tConfigHeader g_sCDCCompSerConfigHeader =
 const tConfigHeader * const g_ppCDCSerConfigDescriptors[] =
 {
     &g_sCDCSerConfigHeader
+};
+
+const tConfigHeader * const g_ppCDCSerConfigDescriptorsHS[] =
+{
+    &g_sCDCSerConfigHeaderHS
 };
 
 //*****************************************************************************
@@ -468,6 +552,18 @@ const tConfigHeader * const g_pCDCCompSerConfigDescriptors[] =
 {
     &g_sCDCCompSerConfigHeader
 };
+
+const tConfigHeader * const g_pCDCCompSerConfigDescriptorsHS[] =
+{
+    &g_sCDCCompSerConfigHeaderHS
+};
+
+//*****************************************************************************
+//
+// Variable to get the maximum packet size for the interface
+//
+//*****************************************************************************
+static uint16_t g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_64);
 
 //*****************************************************************************
 //
@@ -1188,9 +1284,9 @@ ProcessDataToHost(tUSBDCDCDevice *psCDCDevice, uint32_t ui32Status)
     if(psInst->ui16LastTxSize)
     {
         //
-        // Have we just sent a 64 byte packet?
+        // Have we just sent a full packet (64 byte for FS and 512 byte for HS)
         //
-        bSentFullPacket = (psInst->ui16LastTxSize == DATA_IN_EP_MAX_SIZE) ?
+        bSentFullPacket = (psInst->ui16LastTxSize == g_ui16MaxPacketSize) ?
                            true : false;
 
         //
@@ -2147,6 +2243,7 @@ USBDCDCCompositeInit(uint32_t ui32Index, tUSBDCDCDevice *psCDCDevice,
                      tCompositeEntry *psCompEntry)
 {
     tCDCSerInstance *psInst;
+    uint32_t ui32ulpiFeature = 0;
 
     //
     // Check parameter validity.
@@ -2179,16 +2276,34 @@ USBDCDCCompositeInit(uint32_t ui32Index, tUSBDCDCDevice *psCDCDevice,
     psInst->sDevInfo.pui8DeviceDescriptor = g_pui8CDCSerDeviceDescriptor;
 
     //
+    // Get the Feature set for ULPI
+    //
+    USBDCDFeatureGet(0, USBLIB_FEATURE_USBULPI, &ui32ulpiFeature);
+
+    g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_64);
+
+    //
     // The CDC serial configuration is different for composite devices and
     // stand alone devices.
     //
     if(psCompEntry == 0)
     {
         psInst->sDevInfo.ppsConfigDescriptors = g_ppCDCSerConfigDescriptors;
+
+        if(USBLIB_FEATURE_ULPI_HS == ui32ulpiFeature)
+        {
+            psInst->sDevInfo.ppsConfigDescriptors = g_ppCDCSerConfigDescriptorsHS;
+            g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_512);
+        }
     }
     else
     {
         psInst->sDevInfo.ppsConfigDescriptors = g_pCDCCompSerConfigDescriptors;
+        if(USBLIB_FEATURE_ULPI_HS == ui32ulpiFeature)
+        {
+            psInst->sDevInfo.ppsConfigDescriptors = g_pCDCCompSerConfigDescriptorsHS;
+            g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_512);
+        }
     }
     psInst->sDevInfo.ppui8StringDescriptors = 0;
     psInst->sDevInfo.ui32NumStringDescriptors = 0;
@@ -2594,7 +2709,7 @@ USBDCDCPacketWrite(void *pvCDCDevice, uint8_t *pi8Data, uint32_t ui32Length,
     //
     // Can we send the data provided?
     //
-    if((ui32Length > DATA_IN_EP_MAX_SIZE) ||
+    if((ui32Length > g_ui16MaxPacketSize) ||
        (psInst->iCDCTxState != eCDCStateIdle))
     {
         //
@@ -2820,7 +2935,7 @@ USBDCDCTxPacketAvailable(void *pvCDCDevice)
         // We can receive a packet so return the max packet size for the
         // relevant endpoint.
         //
-        return(DATA_IN_EP_MAX_SIZE);
+        return(g_ui16MaxPacketSize);
     }
 }
 

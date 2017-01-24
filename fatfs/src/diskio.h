@@ -37,7 +37,7 @@ DSTATUS disk_status (BYTE pdrv);
 DRESULT disk_read (BYTE pdrv, BYTE*buff, DWORD sector, BYTE count);
 DRESULT disk_write (BYTE pdrv, const BYTE* buff, DWORD sector, BYTE count);
 DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
-
+void	disk_timerproc (void);
 
 /* Disk Status Bits (DSTATUS) */
 #define STA_NOINIT		0x01	/* Drive not initialized */

@@ -1,33 +1,13 @@
 /*
- * usbController.h
+ * usbdisk.c
  *
- *  Created on: Dec 4, 2016
+ *  Created on: Jan 8, 2017
  *      Author: albertopetrucci
  */
 
-#ifndef LIBRARY_USBCONTROLLER_H_
-#define LIBRARY_USBCONTROLLER_H_
+#include "usbDiskController.h"
 
-#include <stdint.h>
-#include <stdbool.h>
-#include "inc/hw_ints.h"
-#include "inc/hw_types.h"
-#include "inc/hw_memmap.h"
-#include "driverlib/fpu.h"
-#include "driverlib/gpio.h"
-#include "driverlib/interrupt.h"
-#include "driverlib/sysctl.h"
-#include "driverlib/systick.h"
-#include "driverlib/udma.h"
-#include "driverlib/rom.h"
-#include "driverlib/pin_map.h"
-#include "usblib/usblib.h"
-#include "usblib/usbmsc.h"
-#include "usblib/host/usbhost.h"
-#include "usblib/host/usbhmsc.h"
-#include "third_party/fatfs/src/ff.h"
-#include "third_party/fatfs/src/diskio.h"
-#include "driverlib/uart.h"
+uint32_t ui32DriveTimeout, ui32SysClock;
 
 //
 // Defines the size of the buffers that hold the path, or temporary
@@ -319,13 +299,6 @@ tDMAControlTable g_psDMAControlTable[6] __attribute__ ((aligned(1024)));
 #define MAX_FILES_PER_MENU 64
 #define MAX_SUBDIR_DEPTH 32
 
-
-//----------------------------------------
-// Prototypes
-//----------------------------------------
-
-uint32_t ui32DriveTimeout, ui32SysClock;
-
 //*****************************************************************************
 //
 // Initializes the file system module.
@@ -341,7 +314,8 @@ static bool FileInit(void) {
     //
     // Mount the file system, using logical disk 0.
     //
-    if(f_mount(0, &g_sFatFs) != FR_OK)
+	FRESULT fresult = f_mount(0, &g_sFatFs);
+    if(fresult != FR_OK)
     {
         return(false);
     }
@@ -552,7 +526,7 @@ static int printFileStructure (void) {
         //
         // Ensure that the error is reported.
         //
-        //UARTprintf("Error from USB disk:\r\n");
+        //UARTprintf("Error from USB disk: ");
         //UARTprintf((char *)StringFromFresult(fresult));
         //UARTprintf("\r\n");
         return(fresult);
@@ -570,12 +544,10 @@ static int printFileStructure (void) {
 		//
 		fresult = f_readdir(&g_sDirObject, &g_sFileInfo);
 
-		//
 		// Check for error and return if there is a problem.
-		//
 		if(fresult != FR_OK)
 		{
-			//UARTprintf("Error from USB disk:\r\n");
+			//UARTprintf("Error from USB disk: ");
 			//UARTprintf((char *)StringFromFresult(fresult));
 			//UARTprintf("\r\n");
 			return(fresult);
@@ -595,9 +567,9 @@ static int printFileStructure (void) {
 		//
 		if(ui32ItemCount < NUM_LIST_STRINGS)
 		{
-			//usnprintf(g_pcFilenames[ui32ItemCount], MAX_FILENAME_STRING_LEN,
-			//		  "(%c) %s", (g_sFileInfo.fattrib & AM_DIR) ? 'D' : 'F',
-			//		  g_sFileInfo.fname);
+			usnprintf(g_pcFilenames[ui32ItemCount], MAX_FILENAME_STRING_LEN,
+					  "(%c) %s", (g_sFileInfo.fattrib & AM_DIR) ? 'D' : 'F',
+					  g_sFileInfo.fname);
 			//UARTprintf(g_pcFilenames[ui32ItemCount]);
 			//UARTprintf("\r\n");
 		}
@@ -615,162 +587,74 @@ static int printFileStructure (void) {
     return(0);
 }
 
-//Loop to mantain usb connection alive
-void USBMainLoop(void){
-	//
-	// Call the USB stack to keep it running.
-	//
-	USBHCDMain();
-
-	switch(g_eState)
-	{
-		case STATE_DEVICE_ENUM:
-		{
-			//
-			// Take it easy on the Mass storage device if it is slow to
-			// start up after connecting.
-			//
-			if(USBHMSCDriveReady(g_psMSCInstance) != 0)
-			{
-				//
-				// Wait about 500ms before attempting to check if the
-				// device is ready again.
-				//
-				// 1 machine cycle takes (1/50*10^6) seconds
-				// SysCtlDelay uses 3 machine cycles, so it would be 3*(1/50*10^6) seconds
-				// Total Delay -> (Time Taken for 3 machine cycles) * Count Value
-				//
-				// Therefore, [(3/50*10^6) * (50*10^6/(3*2))] = 1/2 second
-				//
-				//
-				SysCtlDelay(ui32SysClock / (3 * 2));
-
-				//
-				// Decrement the retry count.
-				//
-				ui32DriveTimeout--;
-
-				//
-				// If the timeout is hit then go to the
-				// STATE_TIMEOUT_DEVICE state.
-				//
-				if(ui32DriveTimeout == 0)
-				{
-					g_eState = STATE_TIMEOUT_DEVICE;
-				}
-				break;
-			}
-
-			//UARTprintf("USB Mass Storage Device Ready\r\n");
-
-			//
-			// Getting here means the device is ready.
-			// Reset the CWD to the root directory.
-			//
-			g_cCwdBuf[0] = '/';
-			g_cCwdBuf[1] = 0;
-
-	        //
-	        // Fill the list box with the files and directories found.
-	        //
-	        if(!printFileStructure()) {
-	        	//
-	        	// If there were no errors reported, we are ready for
-	        	// MSC operation.
-	        	//
-	        	g_eState = STATE_DEVICE_READY;
-	        }
-	        //
-	        // Set the Device Present flag.
-	        //
-	        g_ui32Flags = FLAGS_DEVICE_PRESENT;
-	        break;
-		}
-
-		//
-		// If there is no device then just wait for one.
-		//
-		case STATE_NO_DEVICE:
-		{
-			if(g_ui32Flags == FLAGS_DEVICE_PRESENT)
-			{
-				//
-				// Clear the Device Present flag.
-				//
-				g_ui32Flags &= ~FLAGS_DEVICE_PRESENT;
-			}
-			break;
-		}
-
-		//
-		// An unknown device was connected.
-		//
-		case STATE_UNKNOWN_DEVICE:
-		{
-			//
-			// If this is a new device then change the status.
-			//
-			if((g_ui32Flags & FLAGS_DEVICE_PRESENT) == 0)
-			{
-				// Indicate unknown device is present.
-				//UARTprintf("Unknown Device was connected \r\n");
-			}
-
-			//
-			// Set the Device Present flag.
-			//
-			g_ui32Flags = FLAGS_DEVICE_PRESENT;
-			break;
-		}
-
-		//
-		// The connected mass storage device is not reporting ready.
-		//
-		case STATE_TIMEOUT_DEVICE:
-		{
-			//
-			// If this is the first time in this state then print a
-			// message.
-			//
-			if((g_ui32Flags & FLAGS_DEVICE_PRESENT) == 0)
-			{
-				// Indicate timeout when trying to connect
-				//UARTprintf("Unknown device \r\n");
-			}
-
-			//
-			// Set the Device Present flag.
-			//
-			g_ui32Flags = FLAGS_DEVICE_PRESENT;
-			break;
-		}
-
-		//
-		// Something has caused a power fault.
-		//
-		case STATE_POWER_FAULT:
-		{
-			break;
-		}
-		default:
-		{
-			break;
-		}
-	}
+//CREATE FILE ON USB DISK
+// ex. : const TCHAR *path = "example.txt"
+//       char *content     = "file di esempio\n"
+static int usbCreateFileBool = 0;
+const TCHAR *usbPath;
+static char *usbContent;
+static UINT usbContentSize;
+static int usbNewFile = 1;
+int usbEnableCreateFile(const TCHAR *path, char *content, UINT contentSize, int newFile){
+	usbCreateFileBool = 1;
+	usbPath = path;
+	usbContent = content;
+	usbContentSize = contentSize;
+	usbNewFile = newFile;
+	return 0;
 }
 
-//*****************************************************************************
-//
-// Initializes the USB module.
-//
-// \param None.
-//
-// This function initializes the third party FAT implementation.
-//
-// \return Returns \e true on success or \e false on failure.
-//
-//*****************************************************************************
-void USBInit(void){
+
+int usbCreateFile(){
+
+	if(g_eState == STATE_DEVICE_READY) {
+		FRESULT fresult;
+		static FIL file;
+		UINT btw;
+		char text[] = "hello\n";
+		//char filename[6 + 5];
+
+		if(usbNewFile == 1)
+            fresult = f_open(&file, usbPath, FA_CREATE_ALWAYS | FA_WRITE);
+		else
+		    fresult = f_open(&file, usbPath, FA_OPEN_ALWAYS | FA_WRITE);
+		if(fresult != FR_OK)
+			return(fresult);
+
+		if(usbNewFile == 0){
+		    DWORD size = (&file)->fsize;
+		    fresult = f_lseek(&file,size);
+		    if(fresult != FR_OK)
+		        return(fresult);
+		}
+
+		fresult = f_write(&file, usbContent, usbContentSize, &btw);
+		if(fresult != FR_OK)
+			return(fresult);
+
+		fresult = f_close(&file);
+		if(fresult != FR_OK)
+			return(fresult);
+		usbCreateFileBool = 0;
+	} else
+		return(1);
+	return(0);
+}
+
+
+
+//---------------------------------------------------------------------------
+// main()
+//---------------------------------------------------------------------------
+void usbDiskInit(void)
+{
+	//
+	// Set the main system clock to run from the PLL at 50MHz
+	// Processor clock is calculated with (pll/2)/4 - > (400/2)/4 = 50
+	// NOTE: For USB operation, it should be a minimum of 20MHz
+	//
+	//SysCtlClockSet(SYSCTL_SYSDIV_1|SYSCTL_USE_PLL|SYSCTL_OSC_MAIN|SYSCTL_XTAL_16MHZ);
+	//SysCtlClockSet(SYSCTL_SYSDIV_4 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
 
 	//
 	// Get the System Clock Rate
@@ -782,9 +666,8 @@ void USBInit(void){
 	//
 	// PB0 ---- USB ID ----> GND (Hardware)
 	// PB1 ---- USB VBUS
-	// PD4 ---- USB D+
-	// PD5 ---- USB D-
-	//
+	// PD4 ---- USB D-
+	// PD5 ---- USB D+
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_USB0);
 	SysCtlUSBPLLEnable();
 
@@ -793,81 +676,192 @@ void USBInit(void){
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 	GPIOPinTypeUSBAnalog(GPIO_PORTD_BASE, GPIO_PIN_4 | GPIO_PIN_5);
+	//GPIOPinTypeUSBDigital(GPIO_PORTD_BASE, GPIO_PIN_2 | GPIO_PIN_3);
+	//GPIOPinConfigure(GPIO_PD2_USB0EPEN);
+	//GPIOPinConfigure(GPIO_PD3_USB0PFLT);
 
-	//
 	// Initialize the USB stack for host mode only.
-	//
 	USBStackModeSet(0, eUSBModeForceHost, 0);
 
-	//
 	// Register the host class drivers.
-	//
 	USBHCDRegisterDrivers(0, g_ppHostClassDrivers, g_ui32NumHostClassDrivers);
 
-	//
 	// Configure SysTick for a 100Hz interrupt.
 	// Systick Period = 5000000 / 100 -> 500000
-	//
 	SysTickPeriodSet(SysCtlClockGet() / TICKS_PER_SECOND);
 	SysTickEnable();
 	SysTickIntEnable();
 
-	//
 	// Enable the uDMA controller and set up the control table base.
 	// The uDMA controller is used by the USB library.
-	//
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_UDMA);
 	uDMAEnable();
 	uDMAControlBaseSet(g_psDMAControlTable);
+    SysCtlDelay(80);
 
-	// Enable all Interrupts.
-	IntMasterEnable();
-
-	//UARTprintf("Hardware Initialized\r\n");
-
-	//
 	// Initially wait for device connection.
-	//
 	g_eState = STATE_NO_DEVICE;
 
-	//
 	// Open an instance of the mass storage class driver.
-	//
 	g_psMSCInstance = USBHMSCDriveOpen(0, MSCCallback);
 
-	//
-	// Initialize the drive timeout.
-	//
-	ui32DriveTimeout = USBMSC_DRIVE_RETRY;
+    // Initialize the drive timeout.
+    ui32DriveTimeout = USBMSC_DRIVE_RETRY;
 
-	//
 	// Initialize the USB controller for host operation.
-	//
 	USBHCDInit(0, g_pHCDPool, HCD_MEMORY_SIZE);
 
-	//
 	// Initialize the fat file system.
-	//
 	FileInit();
-	//UARTprintf("FAT File System Module Initialized\r\n");
+
+	// Enter an (almost) infinite loop for reading and processing commands from
+	// the user.
 }
 
-	// Initialize UART0 (brought out to the console via the DEBUG USB port)
-	// RX --- PA0
-	// TX --- PA1
-	// NOTE: Uses the UARTstdio utility
-	/*
-	//SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-	GPIOPinConfigure(GPIO_PA0_U0RX);
-	GPIOPinConfigure(GPIO_PA1_U0TX);
-	GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
-    UARTClockSourceSet(UART0_BASE, (UART_CLOCK_SYSTEM));
-    UARTStdioConfig(0, 115200, SysCtlClockGet());
-    IntEnable(INT_UART0);
-    UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_RT);
-    */
+void usbDiskMainLoop()
+{
+	USBHCDMain();
+	switch(g_eState)
+			{
+				case STATE_DEVICE_ENUM:
+				{
+					//
+					// Take it easy on the Mass storage device if it is slow to
+					// start up after connecting.
+					//
+					if(USBHMSCDriveReady(g_psMSCInstance) != 0)
+					{
+						//
+						// Wait about 500ms before attempting to check if the
+						// device is ready again.
+						//
+						// 1 machine cycle takes (1/50*10^6) seconds
+						// SysCtlDelay uses 3 machine cycles, so it would be 3*(1/50*10^6) seconds
+						// Total Delay -> (Time Taken for 3 machine cycles) * Count Value
+						//
+						// Therefore, [(3/50*10^6) * (50*10^6/(3*2))] = 1/2 second
+						//
+						//
+						SysCtlDelay(ui32SysClock / (3 * 2));
 
+						//
+						// Decrement the retry count.
+						//
+						ui32DriveTimeout--;
 
+						//
+						// If the timeout is hit then go to the
+						// STATE_TIMEOUT_DEVICE state.
+						//
+						if(ui32DriveTimeout == 0)
+						{
+							g_eState = STATE_TIMEOUT_DEVICE;
+						}
+						break;
+					}
 
-#endif /* LIBRARY_USBCONTROLLER_H_ */
+					//UARTprintf("USB Mass Storage Device Ready\r\n");
+
+					//
+					// Getting here means the device is ready.
+					// Reset the CWD to the root directory.
+					//
+					g_cCwdBuf[0] = '/';
+					g_cCwdBuf[1] = 0;
+
+	                //
+	                // Fill the list box with the files and directories found.
+	                //
+	                if(!printFileStructure())
+	                {
+	                    //
+	                    // If there were no errors reported, we are ready for
+	                    // MSC operation.
+	                    //
+	                    g_eState = STATE_DEVICE_READY;
+	                }
+
+					//
+					// Set the Device Present flag.
+					//
+					g_ui32Flags = FLAGS_DEVICE_PRESENT;
+					break;
+				}
+
+				//
+				// If there is no device then just wait for one.
+				//
+				case STATE_NO_DEVICE:
+				{
+					if(g_ui32Flags == FLAGS_DEVICE_PRESENT)
+					{
+	                    //
+	                    // Clear the Device Present flag.
+	                    //
+						g_ui32Flags &= ~FLAGS_DEVICE_PRESENT;
+					}
+					break;
+				}
+
+				//
+				// An unknown device was connected.
+				//
+				case STATE_UNKNOWN_DEVICE:
+				{
+					//
+					// If this is a new device then change the status.
+					//
+					if((g_ui32Flags & FLAGS_DEVICE_PRESENT) == 0)
+					{
+						// Indicate unknown device is present.
+						//UARTprintf("Unknown Device was connected \r\n");
+					}
+
+					//
+					// Set the Device Present flag.
+					//
+					g_ui32Flags = FLAGS_DEVICE_PRESENT;
+					break;
+				}
+
+				//
+				// The connected mass storage device is not reporting ready.
+				//
+				case STATE_TIMEOUT_DEVICE:
+				{
+					//
+					// If this is the first time in this state then print a
+					// message.
+					//
+					if((g_ui32Flags & FLAGS_DEVICE_PRESENT) == 0)
+					{
+						// Indicate timeout when trying to connect
+						//UARTprintf("Unknown device \r\n");
+
+					}
+
+					//
+					// Set the Device Present flag.
+					//
+					g_ui32Flags = FLAGS_DEVICE_PRESENT;
+					break;
+				}
+
+				//
+				// Something has caused a power fault.
+				//
+				case STATE_POWER_FAULT:
+				{
+					break;
+				}
+				case STATE_DEVICE_READY:
+				{
+					if(usbCreateFileBool == 1)
+                			usbCreateFile();
+				}
+				default:
+				{
+					break;
+				}
+			}
+}

@@ -7,151 +7,136 @@
 /* storage control module to the FatFs module with a defined API.        */
 /*-----------------------------------------------------------------------*/
 
-#include "diskio.h"		/* FatFs lower layer API */
-#include "usbdisk.h"	/* Example: USB drive control */
-
-/* Definitions of physical drive number for each media */
-#define ATA		0
-#define MMC		1
-#define USB		2
-
-
 /*-----------------------------------------------------------------------*/
-/* Inidialize a Drive                                                    */
+/*-----------------------------------------------------------------------*/
+/* TivaWare USB MSC module                                               */
+/*-----------------------------------------------------------------------*/
 /*-----------------------------------------------------------------------*/
 
-DSTATUS disk_initialize (
-	BYTE pdrv				/* Physical drive nmuber (0..) */
-)
+/*
+ * This file was modified from a sample available from the FatFs
+ * web site. It was modified to work with the TivaWare USB Library.
+ */
+#include <stdint.h>
+#include <stdbool.h>
+#include "inc/hw_types.h"
+#include "driverlib/sysctl.h"
+#include "usblib/usblib.h"
+#include "usblib/usbmsc.h"
+#include "usblib/host/usbhost.h"
+#include "usblib/host/usbhmsc.h"
+#include "diskio.h"
+#include "ff.h"
+
+extern tUSBHMSCInstance *g_psMSCInstance;
+
+static volatile
+DSTATUS USBStat = STA_NOINIT;    /* Disk status */
+
+/*-----------------------------------------------------------------------*/
+/* Initialize Disk Drive                                                 */
+/*-----------------------------------------------------------------------*/
+
+DSTATUS
+disk_initialize(
+    BYTE bValue)                /* Physical drive number (0) */
 {
-	DSTATUS stat;
-	int result;
+    /* Set the not initialized flag again. If all goes well and the disk is */
+    /* present, this will be cleared at the end of the function.            */
+    USBStat |= STA_NOINIT;
 
-	switch (pdrv) {
+    /* Find out if drive is ready yet. */
+    if (USBHMSCDriveReady(g_psMSCInstance)) return(FR_NOT_READY);
 
-	case USB :
-		result = USB_disk_initialize();
+    /* Clear the not init flag. */
+    USBStat &= ~STA_NOINIT;
 
-		// translate the reslut code here
-
-		return stat;
-	}
-	return STA_NOINIT;
+    return 0;
 }
 
 
 
 /*-----------------------------------------------------------------------*/
-/* Get Disk Status                                                       */
+/* Returns the current status of a drive                                 */
 /*-----------------------------------------------------------------------*/
 
 DSTATUS disk_status (
-	BYTE pdrv		/* Physical drive nmuber (0..) */
-)
+    BYTE drv)                   /* Physical drive number (0) */
 {
-	DSTATUS stat;
-	int result;
-
-	switch (pdrv) {
-
-	case USB :
-		result = USB_disk_status();
-
-		// translate the reslut code here
-
-		return stat;
-	}
-	return STA_NOINIT;
+    if (drv) return STA_NOINIT;        /* Supports only single drive */
+    return USBStat;
 }
 
 
 
 /*-----------------------------------------------------------------------*/
-/* Read Sector(s)                                                        */
+/* This function reads sector(s) from the disk drive                     */
 /*-----------------------------------------------------------------------*/
 
 DRESULT disk_read (
-	BYTE pdrv,		/* Physical drive nmuber (0..) */
-	BYTE *buff,		/* Data buffer to store read data */
-	DWORD sector,	/* Sector address (LBA) */
-	BYTE count		/* Number of sectors to read (1..128) */
-)
+    BYTE drv,               /* Physical drive number (0) */
+    BYTE* buff,             /* Pointer to the data buffer to store read data */
+    DWORD sector,           /* Physical drive nmuber (0) */
+    BYTE count)             /* Sector count (1..255) */
 {
-	DRESULT res;
-	int result;
+    if(USBStat & STA_NOINIT)
+    {
+        return(RES_NOTRDY);
+    }
 
-	switch (pdrv) {
+    /* READ BLOCK */
+    if (USBHMSCBlockRead(g_psMSCInstance, sector, buff, count) == 0)
+        return RES_OK;
 
-	case USB :
-		// translate the arguments here
-
-		result = USB_disk_read(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
-	}
-	return RES_PARERR;
+    return RES_ERROR;
 }
 
 
 
 /*-----------------------------------------------------------------------*/
-/* Write Sector(s)                                                       */
+/* This function writes sector(s) to the disk drive                     */
 /*-----------------------------------------------------------------------*/
 
-#if _USE_WRITE
+#if _READONLY == 0
 DRESULT disk_write (
-	BYTE pdrv,			/* Physical drive nmuber (0..) */
-	const BYTE *buff,	/* Data to be written */
-	DWORD sector,		/* Sector address (LBA) */
-	BYTE count			/* Number of sectors to write (1..128) */
-)
+    BYTE ucDrive,           /* Physical drive number (0) */
+    const BYTE* buff,       /* Pointer to the data to be written */
+    DWORD sector,           /* Start sector number (LBA) */
+    BYTE count)             /* Sector count (1..255) */
 {
-	DRESULT res;
-	int result;
+    if (ucDrive || !count) return RES_PARERR;
+    if (USBStat & STA_NOINIT) return RES_NOTRDY;
+    if (USBStat & STA_PROTECT) return RES_WRPRT;
 
-	switch (pdrv) {
+    /* WRITE BLOCK */
+    if(USBHMSCBlockWrite(g_psMSCInstance, sector, (unsigned char *)buff,
+                         count) == 0)
+        return RES_OK;
 
-	case USB :
-		// translate the arguments here
-
-		result = USB_disk_write(buff, sector, count);
-
-		// translate the reslut code here
-
-		return res;
-	}
-	return RES_PARERR;
+    return RES_ERROR;
 }
-#endif
-
+#endif /* _READONLY */
 
 /*-----------------------------------------------------------------------*/
 /* Miscellaneous Functions                                               */
 /*-----------------------------------------------------------------------*/
 
-#if _USE_IOCTL
 DRESULT disk_ioctl (
-	BYTE pdrv,		/* Physical drive nmuber (0..) */
-	BYTE cmd,		/* Control code */
-	void *buff		/* Buffer to send/receive control data */
-)
+    BYTE drv,               /* Physical drive number (0) */
+    BYTE ctrl,              /* Control code */
+    void *buff)             /* Buffer to send/receive control data */
 {
-	DRESULT res;
-	int result;
+    if(USBStat & STA_NOINIT)
+    {
+        return(RES_NOTRDY);
+    }
 
-	switch (pdrv) {
+    switch(ctrl)
+    {
+        case CTRL_SYNC:
+            return(RES_OK);
 
-	case USB :
-		// pre-process here
-
-		result = USB_disk_ioctl(cmd, buff);
-
-		// post-process here
-
-		return res;
-	}
-	return RES_PARERR;
+        default:
+            return(RES_PARERR);
+    }
 }
-#endif

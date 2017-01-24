@@ -2,7 +2,7 @@
 //
 // usbdbulk.c - USB bulk device class driver.
 //
-// Copyright (c) 2008-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2008-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -80,11 +80,11 @@
 // for each endpoint.
 //
 //*****************************************************************************
-#define DATA_IN_EP_FIFO_SIZE    USB_FIFO_SZ_64
-#define DATA_OUT_EP_FIFO_SIZE   USB_FIFO_SZ_64
+#define DATA_IN_EP_MAX_SIZE     USBFIFOSizeToBytes(USB_FIFO_SZ_64)
+#define DATA_OUT_EP_MAX_SIZE    USBFIFOSizeToBytes(USB_FIFO_SZ_64)
 
-#define DATA_IN_EP_MAX_SIZE     USBFIFOSizeToBytes(DATA_IN_EP_FIFO_SIZE)
-#define DATA_OUT_EP_MAX_SIZE    USBFIFOSizeToBytes(DATA_OUT_EP_FIFO_SIZE)
+#define DATA_IN_EP_MAX_SIZE_HS  USBFIFOSizeToBytes(USB_FIFO_SZ_512)
+#define DATA_OUT_EP_MAX_SIZE_HS USBFIFOSizeToBytes(USB_FIFO_SZ_512)
 
 //*****************************************************************************
 //
@@ -187,6 +187,45 @@ const uint8_t g_pui8BulkInterface[BULKINTERFACE_SIZE] =
     0,                               // The polling interval for this endpoint.
 };
 
+const uint8_t g_pui8BulkInterfaceHS[BULKINTERFACE_SIZE] =
+{
+    //
+    // Vendor-specific Interface Descriptor.
+    //
+    9,                              // Size of the interface descriptor.
+    USB_DTYPE_INTERFACE,            // Type of this descriptor.
+    0,                              // The index for this interface.
+    0,                              // The alternate setting for this
+                                    // interface.
+    2,                              // The number of endpoints used by this
+                                    // interface.
+    USB_CLASS_VEND_SPECIFIC,        // The interface class
+    0,                              // The interface sub-class.
+    0,                              // The interface protocol for the sub-class
+                                    // specified above.
+    4,                              // The string index for this interface.
+
+    //
+    // Endpoint Descriptor
+    //
+    7,                              // The size of the endpoint descriptor.
+    USB_DTYPE_ENDPOINT,             // Descriptor type is an endpoint.
+    USB_EP_DESC_IN | USBEPToIndex(DATA_IN_ENDPOINT),
+    USB_EP_ATTR_BULK,               // Endpoint is a bulk endpoint.
+    USBShort(DATA_IN_EP_MAX_SIZE_HS),  // The maximum packet size.
+    0,                              // The polling interval for this endpoint.
+
+    //
+    // Endpoint Descriptor
+    //
+    7,                               // The size of the endpoint descriptor.
+    USB_DTYPE_ENDPOINT,              // Descriptor type is an endpoint.
+    USB_EP_DESC_OUT | USBEPToIndex(DATA_OUT_ENDPOINT),
+    USB_EP_ATTR_BULK,                // Endpoint is a bulk endpoint.
+    USBShort(DATA_OUT_EP_MAX_SIZE_HS),  // The maximum packet size.
+    0,                               // The polling interval for this endpoint.
+};
+
 //*****************************************************************************
 //
 // The bulk configuration descriptor is defined as two sections, one
@@ -206,6 +245,12 @@ const tConfigSection g_sBulkInterfaceSection =
     g_pui8BulkInterface
 };
 
+const tConfigSection g_sBulkInterfaceSectionHS =
+{
+    sizeof(g_pui8BulkInterfaceHS),
+    g_pui8BulkInterfaceHS
+};
+
 //*****************************************************************************
 //
 // This array lists all the sections that must be concatenated to make a
@@ -216,6 +261,12 @@ const tConfigSection *g_psBulkSections[] =
 {
     &g_sBulkConfigSection,
     &g_sBulkInterfaceSection
+};
+
+const tConfigSection *g_psBulkSectionsHS[] =
+{
+    &g_sBulkConfigSection,
+    &g_sBulkInterfaceSectionHS
 };
 
 #define NUM_BULK_SECTIONS       (sizeof(g_psBulkSections) /                   \
@@ -234,6 +285,12 @@ const tConfigHeader g_sBulkConfigHeader =
     g_psBulkSections
 };
 
+const tConfigHeader g_sBulkConfigHeaderHS =
+{
+    NUM_BULK_SECTIONS,
+    g_psBulkSectionsHS
+};
+
 //*****************************************************************************
 //
 // Configuration Descriptor.
@@ -243,6 +300,18 @@ const tConfigHeader * const g_ppBulkConfigDescriptors[] =
 {
     &g_sBulkConfigHeader
 };
+
+const tConfigHeader * const g_ppBulkConfigDescriptorsHS[] =
+{
+    &g_sBulkConfigHeaderHS
+};
+
+//*****************************************************************************
+//
+// Variable to get the maximum packet size for the interface
+//
+//*****************************************************************************
+static uint16_t g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_64);
 
 //*****************************************************************************
 //
@@ -871,9 +940,9 @@ BulkTickHandler(void *pvBulkDevice, uint32_t ui32TimemS)
 //!
 //! Transmit Operation:
 //!
-//! Calls to USBDBulkPacketWrite() must send no more than 64 bytes of data at a
-//! time and may only be made when no other transmission is currently
-//! outstanding.
+//! Calls to USBDBulkPacketWrite() must send no more than 64 bytes of data for
+//! FS USB and 512 bytes for HS USB at a time and may only be made when no
+//! other transmission is currently outstanding.
 //!
 //! Once a packet of data has been acknowledged by the USB host, a
 //! \b USB_EVENT_TX_COMPLETE event is sent to the application callback to
@@ -883,8 +952,9 @@ BulkTickHandler(void *pvBulkDevice, uint32_t ui32TimemS)
 //!
 //! An incoming USB data packet will result in a call to the application
 //! callback with event \b USBD_EVENT_RX_AVAILABLE.  The application must then
-//! call USBDBulkPacketRead(), passing a buffer capable of holding 64 bytes, to
-//! retrieve the data and acknowledge reception to the USB host.
+//! call USBDBulkPacketRead(), passing a buffer capable of holding 64 bytes for
+//! FS USB and 512 bytes for HS USB, to retrieve the data and acknowledge
+//! reception to the USB host.
 //!
 //! \note The application must not make any calls to the low level USB Device
 //! API if interacting with USB via the USB bulk device class API.  Doing so
@@ -966,6 +1036,7 @@ USBDBulkCompositeInit(uint32_t ui32Index, tUSBDBulkDevice *psBulkDevice,
                       tCompositeEntry *psCompEntry)
 {
     tBulkInstance *psInst;
+    uint32_t ui32ulpiFeature = 0;
 
     //
     // Check parameter validity.
@@ -992,11 +1063,23 @@ USBDBulkCompositeInit(uint32_t ui32Index, tUSBDBulkDevice *psBulkDevice,
     }
 
     //
+    // Get the ULPI Feature
+    //
+    USBDCDFeatureGet(0, USBLIB_FEATURE_USBULPI, &ui32ulpiFeature);
+
+    g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_64);
+
+    //
     // Initialize the device information structure.
     //
     psInst->sDevInfo.psCallbacks = &g_sBulkHandlers;
     psInst->sDevInfo.pui8DeviceDescriptor = g_pui8BulkDeviceDescriptor;
     psInst->sDevInfo.ppsConfigDescriptors = g_ppBulkConfigDescriptors;
+    if (USBLIB_FEATURE_ULPI_HS == ui32ulpiFeature)
+    {
+        psInst->sDevInfo.ppsConfigDescriptors = g_ppBulkConfigDescriptorsHS;
+        g_ui16MaxPacketSize = USBFIFOSizeToBytes(USB_FIFO_SZ_512);
+    }
     psInst->sDevInfo.ppui8StringDescriptors = 0;
     psInst->sDevInfo.ui32NumStringDescriptors = 0;
 
@@ -1226,7 +1309,7 @@ USBDBulkPacketWrite(void *pvBulkDevice, uint8_t *pi8Data, uint32_t ui32Length,
     //
     // Can we send the data provided?
     //
-    if((ui32Length > DATA_IN_EP_MAX_SIZE) ||
+    if((ui32Length > g_ui16MaxPacketSize) ||
        (psInst->iBulkTxState != eBulkStateIdle))
     {
         //
@@ -1436,7 +1519,7 @@ USBDBulkTxPacketAvailable(void *pvBulkDevice)
         // We can receive a packet so return the max packet size for the
         // relevant endpoint.
         //
-        return(DATA_IN_EP_MAX_SIZE);
+        return(g_ui16MaxPacketSize);
     }
 }
 

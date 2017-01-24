@@ -2,7 +2,7 @@
 //
 // usbdevice.h - types and definitions used during USB enumeration.
 //
-// Copyright (c) 2008-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2008-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -196,6 +196,8 @@ extern tEndpointDescriptor *
                                         uint32_t ui32Index);
 extern bool USBDCDRemoteWakeupRequest(uint32_t ui32Index);
 extern bool USBDCDFeatureSet(uint32_t ui32Index, uint32_t ui32Feature,
+                             void *pvFeature);
+extern bool USBDCDFeatureGet(uint32_t ui32Index, uint32_t ui32Feature,
                              void *pvFeature);
 extern bool USBDCDRemoteWakeLPM(uint32_t ui32Index);
 

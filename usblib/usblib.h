@@ -2,7 +2,7 @@
 //
 // usblib.h - Main header file for the USB Library.
 //
-// Copyright (c) 2008-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2008-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -1593,6 +1593,11 @@ tEventInfo;
 //
 #define USB_EVENT_LPM_ERROR     (USB_EVENT_BASE + 22)
 
+//
+//! This event occurs when a device has been issued a configuration change.
+//
+#define USB_EVENT_CONFIG_CHANGE (USB_EVENT_BASE + 23)
+
 //*****************************************************************************
 //
 // Close the usblib_events Doxygen group.
@@ -1629,15 +1634,6 @@ typedef uint32_t (* tUSBPacketTransfer)(void *pvHandle, uint8_t *pi8Data,
 //*****************************************************************************
 typedef uint32_t (* tUSBPacketAvailable)(void *pvHandle);
 
-//*****************************************************************************
-//
-//! The number of bytes of workspace that each USB buffer object requires.
-//! This workspace memory is provided to the buffer on USBBufferInit() in
-//! the \e pvWorkspace field of the \e tUSBBuffer structure.
-//
-//*****************************************************************************
-#define USB_BUFFER_WORKSPACE_SIZE                                             \
-                                24
 //*****************************************************************************
 //
 // The defines used with the USBDCDFeatureSet() or USBHCDFeatureSet() calls.
@@ -1768,6 +1764,50 @@ tLPMFeature;
 
 //*****************************************************************************
 //
+//! The structure used for encapsulating all the items associated with a
+//! ring buffer.
+//
+//*****************************************************************************
+typedef struct
+{
+    //
+    //! The ring buffer size.
+    //
+    uint32_t ui32Size;
+
+    //
+    //! The ring buffer write index.
+    //
+    volatile uint32_t ui32WriteIndex;
+
+    //
+    //! The ring buffer read index.
+    //
+    volatile uint32_t ui32ReadIndex;
+
+    //
+    //! The ring buffer.
+    //
+    uint8_t *pui8Buf;
+}
+tUSBRingBufObject;
+
+//*****************************************************************************
+//
+// Workspace variables required by each buffer instance.  This structure is
+// private and should not be accessed directly by the application.
+//
+//*****************************************************************************
+typedef struct
+{
+    tUSBRingBufObject sRingBuf;
+    uint32_t ui32LastSent;
+    uint32_t ui32Flags;
+}
+tUSBBufferVars;
+
+//*****************************************************************************
+//
 //! The structure used by the application to initialize a buffer object that
 //! will provide buffered access to either a transmit or receive channel.
 //
@@ -1830,42 +1870,12 @@ typedef struct
     uint32_t ui32BufferSize;
 
     //
-    //! A pointer to USB_BUFFER_WORKSPACE_SIZE bytes of RAM that the buffer
-    //! object can use for workspace.
+    //! The private data for the USB buffer that is allocated by the
+    //! application.
     //
-    void *pvWorkspace;
+    tUSBBufferVars sPrivateData;
 }
 tUSBBuffer;
-
-//*****************************************************************************
-//
-//! The structure used for encapsulating all the items associated with a
-//! ring buffer.
-//
-//*****************************************************************************
-typedef struct
-{
-    //
-    //! The ring buffer size.
-    //
-    uint32_t ui32Size;
-
-    //
-    //! The ring buffer write index.
-    //
-    volatile uint32_t ui32WriteIndex;
-
-    //
-    //! The ring buffer read index.
-    //
-    volatile uint32_t ui32ReadIndex;
-
-    //
-    //! The ring buffer.
-    //
-    uint8_t *pui8Buf;
-}
-tUSBRingBufObject;
 
 //*****************************************************************************
 //
@@ -1879,7 +1889,7 @@ tUSBRingBufObject;
 // USB buffer API function prototypes.
 //
 //*****************************************************************************
-extern const tUSBBuffer *USBBufferInit(const tUSBBuffer *psBuffer);
+extern const tUSBBuffer *USBBufferInit(tUSBBuffer *psBuffer);
 extern void USBBufferZeroLengthPacketInsert(const tUSBBuffer *psBuffer,
                                             bool bSendZLP);
 extern void USBBufferInfoGet(const tUSBBuffer *psBuffer,

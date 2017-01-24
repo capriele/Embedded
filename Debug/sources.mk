@@ -116,8 +116,6 @@ driverlib \
 driverlib/ccs/Debug \
 driverlib/rvmdk \
 fatfs/src \
-kiss_fft \
-library \
 usblib/ccs/Debug \
 usblib/device \
 usblib/ewarm/Exe \

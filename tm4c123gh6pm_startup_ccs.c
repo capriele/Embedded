@@ -41,11 +41,12 @@ static void IntDefaultHandler(void);
 //
 //*****************************************************************************
 extern void _c_int00(void);
-extern void ADC0IntHandler(void);
-extern void uDMAErrorHandler(void);
+extern void ADC0SS1IntHandler(void);
+extern void Timer0IntHandler(void);
+extern void SysTickHandler(void);
+extern void USB0OTGModeIntHandler(void);
+extern void UARTStdioIntHandler(void);
 extern void SSI0IntHandler(void);
-extern void I2C0SlaveIntHandler(void);
-extern void UART0IntHandler(void);
 //*****************************************************************************
 //
 // Linker variable that marks the top of the stack.
@@ -86,7 +87,7 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // Debug monitor handler
     0,                                      // Reserved
     IntDefaultHandler,                      // The PendSV handler
-    IntDefaultHandler,                      // The SysTick handler
+	SysTickHandler,                      // The SysTick handler
     IntDefaultHandler,                      // GPIO Port A
     IntDefaultHandler,                      // GPIO Port B
     IntDefaultHandler,                      // GPIO Port C
@@ -95,18 +96,18 @@ void (* const g_pfnVectors[])(void) =
 	IntDefaultHandler,                      // UART0 Rx and Tx
     IntDefaultHandler,                      // UART1 Rx and Tx
 	SSI0IntHandler,                      // SSI0 Rx and Tx
-	I2C0SlaveIntHandler,                      // I2C0 Master and Slave
+	IntDefaultHandler,                      // I2C0 Master and Slave
     IntDefaultHandler,                      // PWM Fault
     IntDefaultHandler,                      // PWM Generator 0
     IntDefaultHandler,                      // PWM Generator 1
     IntDefaultHandler,                      // PWM Generator 2
     IntDefaultHandler,                      // Quadrature Encoder 0
-	ADC0IntHandler,                      // ADC Sequence 0
-    IntDefaultHandler,                      // ADC Sequence 1
-    IntDefaultHandler,                      // ADC Sequence 2
+	IntDefaultHandler,                      // ADC Sequence 0
+	ADC0SS1IntHandler,                      // ADC Sequence 1
+	IntDefaultHandler,                      // ADC Sequence 2
 	IntDefaultHandler,                      // ADC Sequence 3
     IntDefaultHandler,                      // Watchdog timer
-    IntDefaultHandler,                      // Timer 0 subtimer A
+	Timer0IntHandler,                      // Timer 0 subtimer A
     IntDefaultHandler,                      // Timer 0 subtimer B
     IntDefaultHandler,                      // Timer 1 subtimer A
     IntDefaultHandler,                      // Timer 1 subtimer B
@@ -131,10 +132,10 @@ void (* const g_pfnVectors[])(void) =
     0,                                      // Reserved
     0,                                      // Reserved
     IntDefaultHandler,                      // Hibernate
-    IntDefaultHandler,                      // USB0
+	USB0OTGModeIntHandler,                      // USB0
     IntDefaultHandler,                      // PWM Generator 3
 	IntDefaultHandler,                      // uDMA Software Transfer
-	uDMAErrorHandler,                      // uDMA Error
+	IntDefaultHandler,                      // uDMA Error
 	IntDefaultHandler,                      // ADC1 Sequence 0
     IntDefaultHandler,                      // ADC1 Sequence 1
     IntDefaultHandler,                      // ADC1 Sequence 2

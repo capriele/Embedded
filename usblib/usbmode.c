@@ -2,7 +2,7 @@
 //
 // usbmode.c - Functions related to dual mode USB device/host operation.
 //
-// Copyright (c) 2008-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2008-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -704,14 +704,7 @@ USBOTGModeInit(uint32_t ui32Index, uint32_t ui32PollingRate,
     //
     // Enable the USB interrupt.
     //
-    //if(CLASS_IS_TM4C129)
-    //{
-        //OS_INT_ENABLE(INT_USB0_TM4C129);
-    //}
-    //else
-    //{
-        OS_INT_ENABLE(INT_USB0_TM4C123);
-    //}
+    OS_INT_ENABLE(INT_USB0_TM4C123);
 }
 
 //*****************************************************************************

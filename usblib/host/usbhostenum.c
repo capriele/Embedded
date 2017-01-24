@@ -2,7 +2,7 @@
 //
 // usbhostenum.c - Device enumeration code for the USB host library.
 //
-// Copyright (c) 2008-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2008-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -2175,6 +2175,12 @@ USBHCDPipeRead(uint32_t ui32Pipe, uint8_t *pui8Data, uint32_t ui32Size)
                 // Set the pipe state to error.
                 //
                 g_sUSBHCD.psUSBINPipes[ui32PipeIdx].iState = ePipeError;
+				
+                //
+                // Needs to be set to exit out of large while loop.
+                //
+                ui32RemainingBytes = 0;
+
                 break;
             }
 
@@ -2434,14 +2440,6 @@ USBHCDInitInternal(uint32_t ui32Index, void *pvPool, uint32_t ui32PoolSize)
     g_sUSBHCD.ui32IntNum = INT_USB0_TM4C123;
 
     //
-    // These devices have a different USB interrupt number.
-    //
-    //if(CLASS_IS_TM4C129)
-    //{
-    //    g_sUSBHCD.ui32IntNum = INT_USB0_TM4C129;
-    //}
-
-    //
     // All Pipes are unused at start.
     //
     for(i32Idx = 0; i32Idx < MAX_NUM_PIPES; i32Idx++)
@@ -2463,7 +2461,7 @@ USBHCDInitInternal(uint32_t ui32Index, void *pvPool, uint32_t ui32PoolSize)
     //
     // Initialize the DMA interface.
     //
-    g_sUSBHCD.psDMAInstance = USBLibDMAInit(g_sUSBHCD.ui32USBBase);
+    g_sUSBHCD.psDMAInstance = USBLibDMAInit(ui32Index);
 
     //
     // Initialized the device structures.
@@ -2966,14 +2964,7 @@ USBHCDInit(uint32_t ui32Index, void *pvPool, uint32_t ui32PoolSize)
     //
     if(g_ui32Tickms == 0)
     {
-        //if(CLASS_IS_TM4C129)
-        //{
-        //    g_ui32Tickms = 120000000 / 3000;
-        //}
-        //else
-        //{
-            g_ui32Tickms = 80000000 / 3000;
-        //}
+    		g_ui32Tickms = 80000000 / 3000;
     }
 }
 

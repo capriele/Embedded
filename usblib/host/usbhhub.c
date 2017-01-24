@@ -2,7 +2,7 @@
 //
 // usbhhub.c - This file contains the host HID driver.
 //
-// Copyright (c) 2011-2014 Texas Instruments Incorporated.  All rights reserved.
+// Copyright (c) 2011-2016 Texas Instruments Incorporated.  All rights reserved.
 // Software License Agreement
 // 
 // Texas Instruments (TI) is supplying this software for use solely and
@@ -18,7 +18,7 @@
 // CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
 // DAMAGES, FOR ANY REASON WHATSOEVER.
 // 
-// This is part of revision 2.1.0.12573 of the Tiva USB Library.
+// This is part of revision 2.1.3.156 of the Tiva USB Library.
 //
 //*****************************************************************************
 
@@ -1445,14 +1445,6 @@ USBHHubInit(void)
         // Save the USB interrupt number.
         //
         g_sRootHub.ui32IntNum = INT_USB0_TM4C123;
-
-        //
-        // These devices have a different USB interrupt number.
-        //
-        //if(CLASS_IS_TM4C129)
-        //{
-        //    g_sRootHub.ui32IntNum = INT_USB0_TM4C129;
-        //}
     }
 }
 

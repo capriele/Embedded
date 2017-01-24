@@ -252,13 +252,12 @@ TCHAR* f_gets (TCHAR* buff, int len, FIL* fp);						/* Get a string from the fil
 #if !_FS_READONLY
 static DWORD get_fattime (void)
 {
-    return    ((2007UL-1980) << 25) // Year = 2007
-            | (6UL << 21)           // Month = June
-            | (5UL << 16)           // Day = 5
-            | (11U << 11)           // Hour = 11
-            | (38U << 5)            // Min = 38
-            | (0U >> 1)             // Sec = 0
-            ;
+	return      ((DWORD)(2014 - 1980) << 25)    // Year 2014
+	            | ((DWORD)7 << 21)                // Month 7
+	            | ((DWORD)10 << 16)                // Mday 10
+	            | ((DWORD)16 << 11)                // Hour 16
+	            | ((DWORD)0 << 5)                // Min 0
+	            | ((DWORD)0 >> 1);                // Sec 0
 }
 #endif
 
